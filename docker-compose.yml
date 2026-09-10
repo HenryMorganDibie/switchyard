@@ -4,18 +4,21 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: switchyard
-      POSTGRES_USER: switchyard
-      POSTGRES_PASSWORD: switchyard_dev_only
+      # No literal values here on purpose - see .env.example. `:?` fails the compose run with a
+      # clear message if .env is missing, rather than silently falling back to a value that
+      # would just be a hardcoded credential-shaped string checked into git again.
+      POSTGRES_DB: ${POSTGRES_DB:?copy .env.example to .env first}
+      POSTGRES_USER: ${POSTGRES_USER:?copy .env.example to .env first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env first}
     ports:
       # Host port 5432 is often already taken by a native Postgres install (it is on the
       # reference dev machine — a Windows `postgresql-x64-16` service). Publishing on 5455
       # avoids silently colliding with it; see docs/networking.md.
-      - "5455:5432"
+      - "${POSTGRES_PORT:-5455}:5432"
     volumes:
       - switchyard-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U switchyard -d switchyard"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-switchyard} -d ${POSTGRES_DB:-switchyard}"]
       interval: 5s
       timeout: 5s
       retries: 10

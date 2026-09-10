@@ -30,6 +30,7 @@ PCI-DSS certified and does not implement real card-scheme certification. See `SE
 ## Running locally
 
 ```
+cp .env.example .env      # local-only dev credentials for the Postgres container - see .env.example
 docker compose up -d      # Postgres, Redis, Kafka
 ./gradlew bootRun         # starts the switch
 ```

@@ -2,9 +2,9 @@ spring:
   application:
     name: switchyard
   datasource:
-    url: jdbc:postgresql://localhost:5455/switchyard
-    username: switchyard
-    password: switchyard_dev_only
+    url: jdbc:postgresql://localhost:${POSTGRES_PORT:5455}/${POSTGRES_DB:switchyard}
+    username: ${POSTGRES_USER:switchyard}
+    password: ${POSTGRES_PASSWORD:switchyard_dev_only}
   jpa:
     open-in-view: false
     hibernate:

@@ -18,6 +18,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -29,10 +30,12 @@ import java.util.Map;
  * deployment's participant/rule set would come from wherever the admin API milestone decides to
  * source it from.
  *
- * <p>The TCP gateway is disabled by default in tests (see {@code src/test/resources/
- * application.yml}) so the many existing Spring context tests that have nothing to do with the
- * network layer don't each start a real listening socket; it defaults to enabled for
- * {@code bootRun} and the one test that specifically exercises the gateway re-enables it.
+ * <p>The TCP gateway is disabled by default in tests: the many existing Spring context tests
+ * that have nothing to do with the network layer disable it individually via
+ * {@code @TestPropertySource(properties = "switchyard.tcp.enabled=false")} rather than a shared
+ * {@code src/test/resources/application.yml} (that file would shadow, not merge with, the main
+ * config - see the golden-path milestone's commit history for why). It defaults to enabled for
+ * {@code bootRun}, and the one test that specifically exercises the gateway re-enables it.
  */
 @Configuration
 public class SwitchGatewayConfiguration {
@@ -70,10 +73,13 @@ public class SwitchGatewayConfiguration {
     }
 
     @Bean
-    public TransactionProcessingPipeline transactionProcessingPipeline(TransactionRepository transactionRepository,
-                                                                         TransactionEventRepository eventRepository,
-                                                                         TransactionRouter router) {
-        return new TransactionProcessingPipeline(transactionRepository, eventRepository, router);
+    public TransactionProcessingPipeline transactionProcessingPipeline(
+            TransactionRepository transactionRepository,
+            TransactionEventRepository eventRepository,
+            TransactionRouter router,
+            @Value("${switchyard.issuer.timeout-ms:2000}") long issuerTimeoutMillis) {
+        return new TransactionProcessingPipeline(
+                transactionRepository, eventRepository, router, Duration.ofMillis(issuerTimeoutMillis));
     }
 
     @Bean(initMethod = "start", destroyMethod = "stop")

@@ -37,16 +37,28 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Uses a Testcontainers-provisioned Postgres, not the manually-started {@code docker compose}
  * stack the rest of the suite runs against, so this specific test is fully self-contained - per
- * the plan's explicit requirement for this one test. Redis/Kafka are not provisioned: nothing in
- * this milestone's pipeline uses them (idempotency checking and event publishing are later
- * milestones), and Spring's auto-configuration for both is lazy, so the context starts fine
- * without either running.
+ * the plan's explicit requirement for this one test. Redis is deliberately pointed at an
+ * unreachable port rather than left to whatever {@code spring.data.redis.host/port} the main
+ * config happens to resolve to: this test's request fields are fixed literals, so its
+ * idempotency key is identical on every run, and a docker-compose Redis that happens to be up
+ * alongside this test (common, since other tests in the suite use it) would otherwise cache this
+ * test's response on one run and silently serve that stale cache hit - bypassing this run's own
+ * fresh Testcontainers Postgres entirely - on the next. Found exactly that way: a full-suite run
+ * failed with zero persisted rows despite a fully valid response, because Redis (left running
+ * from an earlier idempotency-milestone test) answered before Postgres was ever touched. Pointing
+ * Redis at an unreachable port makes IdempotencyService's graceful-degradation path - the thing
+ * this test is supposed to prove works - actually exercised, deterministically, every run.
+ * Kafka is not provisioned either: nothing in this milestone's pipeline uses it (event publishing
+ * is a later milestone), and Spring's auto-configuration for it is lazy, so the context starts
+ * fine without it running.
  */
 @SpringBootTest
 @Testcontainers
 @TestPropertySource(properties = {
         "switchyard.tcp.enabled=true",
-        "switchyard.tcp.port=0"
+        "switchyard.tcp.port=0",
+        "spring.data.redis.host=127.0.0.1",
+        "spring.data.redis.port=1" // deliberately unreachable - see class Javadoc
 })
 class GoldenPathIntegrationTest {
 

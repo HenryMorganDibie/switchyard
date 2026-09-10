@@ -1,5 +1,6 @@
 package com.henrymorgandibie.switchyard.config;
 
+import com.henrymorgandibie.switchyard.idempotency.IdempotencyService;
 import com.henrymorgandibie.switchyard.network.tcp.IsoTcpServer;
 import com.henrymorgandibie.switchyard.network.tcp.IsoTcpServerConfig;
 import com.henrymorgandibie.switchyard.participant.acquirer.AcquirerConnector;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
 import java.util.List;
@@ -73,13 +75,21 @@ public class SwitchGatewayConfiguration {
     }
 
     @Bean
+    public IdempotencyService idempotencyService(
+            StringRedisTemplate redisTemplate,
+            @Value("${switchyard.idempotency.cache-ttl-seconds:300}") long cacheTtlSeconds) {
+        return new IdempotencyService(redisTemplate, Duration.ofSeconds(cacheTtlSeconds));
+    }
+
+    @Bean
     public TransactionProcessingPipeline transactionProcessingPipeline(
             TransactionRepository transactionRepository,
             TransactionEventRepository eventRepository,
             TransactionRouter router,
-            @Value("${switchyard.issuer.timeout-ms:2000}") long issuerTimeoutMillis) {
-        return new TransactionProcessingPipeline(
-                transactionRepository, eventRepository, router, Duration.ofMillis(issuerTimeoutMillis));
+            @Value("${switchyard.issuer.timeout-ms:2000}") long issuerTimeoutMillis,
+            IdempotencyService idempotencyService) {
+        return new TransactionProcessingPipeline(transactionRepository, eventRepository, router,
+                Duration.ofMillis(issuerTimeoutMillis), idempotencyService);
     }
 
     @Bean(initMethod = "start", destroyMethod = "stop")

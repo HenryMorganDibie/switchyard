@@ -1,5 +1,6 @@
 package com.henrymorgandibie.switchyard.transaction.application;
 
+import com.henrymorgandibie.switchyard.idempotency.IdempotencyService;
 import com.henrymorgandibie.switchyard.iso8583.codec.IsoMessagePacker;
 import com.henrymorgandibie.switchyard.iso8583.codec.IsoMessageUnpacker;
 import com.henrymorgandibie.switchyard.iso8583.exception.RequiredFieldMissingException;
@@ -22,14 +23,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Duration;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -49,6 +54,9 @@ class TransactionProcessingPipelineTest {
 
     @Mock
     private TransactionEventRepository eventRepository;
+
+    @Mock
+    private IdempotencyService idempotencyService;
 
     @Test
     void approvedFlowTransitionsThroughToApprovedAndReturnsA00Response() {
@@ -237,8 +245,83 @@ class TransactionProcessingPipelineTest {
                 .isInstanceOf(RequiredFieldMissingException.class);
     }
 
+    @Test
+    void cacheHitReturnsCachedBytesWithoutTouchingRouterOrPersistence() {
+        byte[] cachedResponse = {1, 2, 3, 4};
+        when(idempotencyService.checkCache(any())).thenReturn(Optional.of(cachedResponse));
+        TransactionRouter router = acquiringInstitutionId -> {
+            throw new AssertionError("router should not be called on a cache hit");
+        };
+
+        TransactionProcessingPipeline pipeline = newPipeline(router);
+        byte[] responseBytes = pipeline.handle("corr-10", pack0200("000010"));
+
+        assertThat(responseBytes).isEqualTo(cachedResponse);
+        verifyNoInteractions(transactionRepository);
+    }
+
+    @Test
+    void existingTransactionFoundInPostgresIsReplayedWithoutReprocessing() {
+        Transaction existing = Transaction.received("corr-old", "0200", "000011", null,
+                "000000", 5000L, "566", "TERM0001", "12345", "some-key");
+        existing.applyState(TransactionState.APPROVED);
+        existing.recordResponseCode("00");
+        when(transactionRepository.findByIdempotencyKey(any())).thenReturn(Optional.of(existing));
+        TransactionRouter router = acquiringInstitutionId -> {
+            throw new AssertionError("router should not be called for an already-processed duplicate");
+        };
+
+        TransactionProcessingPipeline pipeline = newPipeline(router);
+        byte[] responseBytes = pipeline.handle("corr-11", pack0200("000011"));
+        IsoMessage response = IsoMessageUnpacker.unpack(responseBytes);
+
+        assertThat(response.stringField(39)).isEqualTo("00");
+        verify(transactionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void concurrentInsertRaceIsHandledByLookingUpTheWinner() {
+        Transaction winner = Transaction.received("corr-winner", "0200", "000012", null,
+                "000000", 5000L, "566", "TERM0001", "12345", "some-key");
+        winner.applyState(TransactionState.DECLINED);
+        winner.recordResponseCode("05");
+
+        // First findByIdempotencyKey call (the pre-check) finds nothing; the insert then loses
+        // the race and throws; the second findByIdempotencyKey call (after catching that) finds
+        // the row the concurrent request just committed.
+        when(transactionRepository.findByIdempotencyKey(any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(winner));
+        when(transactionRepository.saveAndFlush(any(Transaction.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+        TransactionRouter router = acquiringInstitutionId -> {
+            throw new AssertionError("router should not be called once a duplicate is detected");
+        };
+
+        TransactionProcessingPipeline pipeline = newPipeline(router);
+        byte[] responseBytes = pipeline.handle("corr-12", pack0200("000012"));
+        IsoMessage response = IsoMessageUnpacker.unpack(responseBytes);
+
+        assertThat(response.stringField(39)).isEqualTo("05");
+    }
+
+    @Test
+    void everyResponseIsCachedIncludingFailures() {
+        TransactionRouter router = acquiringInstitutionId -> {
+            throw new NoRouteException("unrecognized acquiring institution: " + acquiringInstitutionId);
+        };
+        when(transactionRepository.saveAndFlush(any(Transaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TransactionProcessingPipeline pipeline = newPipeline(router);
+        pipeline.handle("corr-13", pack0200("000013"));
+
+        verify(idempotencyService).cacheResponse(any(), any());
+    }
+
     private TransactionProcessingPipeline newPipeline(TransactionRouter router) {
-        return new TransactionProcessingPipeline(transactionRepository, eventRepository, router, ISSUER_TIMEOUT);
+        return new TransactionProcessingPipeline(
+                transactionRepository, eventRepository, router, ISSUER_TIMEOUT, idempotencyService);
     }
 
     private Transaction lastSavedTransaction() {

@@ -16,6 +16,7 @@ class RequiredFieldsValidatorTest {
                 .numeric(3, "000000")
                 .numeric(7, "0910120000")
                 .numeric(11, "000001")
+                .numeric(32, "12345")
                 .ans(41, "TERM0001")
                 .numeric(49, "566")
                 .build();
@@ -32,11 +33,28 @@ class RequiredFieldsValidatorTest {
                 .numeric(4, "000000005000")
                 .numeric(7, "0910120000")
                 .numeric(11, "000001")
+                .numeric(32, "12345")
                 .ans(41, "TERM0001")
                 .numeric(49, "566")
                 .build();
 
         assertThatCode(() -> RequiredFieldsValidator.validate(message)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void financialRequestMissingAcquiringInstitutionIsRejected() {
+        IsoMessage message = IsoMessage.builder(Mti.FINANCIAL_REQUEST)
+                .numeric(3, "000000")
+                .numeric(4, "000000005000")
+                .numeric(7, "0910120000")
+                .numeric(11, "000001")
+                .ans(41, "TERM0001")
+                .numeric(49, "566")
+                .build();
+
+        assertThatThrownBy(() -> RequiredFieldsValidator.validate(message))
+                .isInstanceOf(RequiredFieldMissingException.class)
+                .hasMessageContaining("DE32");
     }
 
     @Test
@@ -72,6 +90,7 @@ class RequiredFieldsValidatorTest {
                 .numeric(4, "000000005000")
                 .numeric(7, "0910120600")
                 .numeric(11, "000003")
+                .numeric(32, "12345")
                 .ans(41, "TERM0001")
                 .numeric(49, "566")
                 .build();

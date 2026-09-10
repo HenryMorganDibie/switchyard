@@ -52,6 +52,18 @@ class IsoResponseBuilderTest {
     }
 
     @Test
+    void approvalWithAuthorizationIdSetsDe38() {
+        IsoMessage request = IsoMessage.builder(Mti.FINANCIAL_REQUEST)
+                .numeric(11, "000001")
+                .build();
+
+        IsoMessage response = IsoResponseBuilder.buildResponse(request, Mti.FINANCIAL_RESPONSE, "00", "AUTH01");
+
+        assertThat(response.stringField(38)).isEqualTo("AUTH01");
+        assertThat(response.stringField(39)).isEqualTo("00");
+    }
+
+    @Test
     void declinedResponseCarriesTheGivenResponseCode() {
         IsoMessage request = IsoMessage.builder(Mti.FINANCIAL_REQUEST)
                 .numeric(11, "000001")

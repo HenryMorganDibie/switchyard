@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -20,8 +21,10 @@ import static org.assertj.core.api.Assertions.byLessThan;
  * Runs against the real Postgres started via {@code docker compose up} (same pattern as
  * {@code SwitchyardApplicationTests}) - not Testcontainers, which is explicitly scoped to a
  * later milestone. Each test runs in its own Spring-managed transaction, rolled back afterward.
+ * TCP gateway disabled: this test doesn't exercise the network layer.
  */
 @SpringBootTest
+@TestPropertySource(properties = "switchyard.tcp.enabled=false")
 @Transactional
 class TransactionRepositoryTest {
 

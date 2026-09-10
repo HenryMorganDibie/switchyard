@@ -41,4 +41,15 @@ public enum Mti {
     public static boolean isSupported(String code) {
         return BY_CODE.containsKey(code);
     }
+
+    /** The response MTI for a request MTI (e.g. FINANCIAL_REQUEST -&gt; FINANCIAL_RESPONSE). */
+    public Mti responseMti() {
+        return switch (this) {
+            case AUTHORIZATION_REQUEST -> AUTHORIZATION_RESPONSE;
+            case FINANCIAL_REQUEST -> FINANCIAL_RESPONSE;
+            case REVERSAL_REQUEST -> REVERSAL_RESPONSE;
+            case NETWORK_MANAGEMENT_REQUEST -> NETWORK_MANAGEMENT_RESPONSE;
+            default -> throw new IllegalStateException(this + " is a response MTI, it has no response MTI of its own");
+        };
+    }
 }

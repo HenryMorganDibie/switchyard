@@ -10,14 +10,13 @@ import java.util.List;
 
 /**
  * Builds the response {@link IsoMessage} shell for a request: echoes the request's data
- * elements (excluding ones that only make sense on a request, like PIN data) and sets the
- * response code (DE39).
+ * elements (excluding ones that only make sense on a request, like PIN data), sets the response
+ * code (DE39), and optionally an authorization identification response (DE38) when the caller
+ * has one (set on approval).
  *
  * <p>This is pure message construction - it has no knowledge of routing, issuer calls, or
- * transaction state; a transaction pipeline built on top decides things like whether to add an
- * authorization identification response (DE38) for an approval. Callers needing more than the
- * echo + response code shell built here should extend the returned message's field set via a
- * fresh {@link IsoMessage.Builder} seeded from it.
+ * transaction state; a transaction pipeline built on top decides *whether* to pass an
+ * authorization id, not this class.
  */
 public final class IsoResponseBuilder {
 
@@ -28,6 +27,11 @@ public final class IsoResponseBuilder {
     }
 
     public static IsoMessage buildResponse(IsoMessage request, Mti responseMti, String responseCode) {
+        return buildResponse(request, responseMti, responseCode, null);
+    }
+
+    public static IsoMessage buildResponse(IsoMessage request, Mti responseMti, String responseCode,
+                                            String authorizationId) {
         IsoMessage.Builder builder = IsoMessage.builder(responseMti);
         for (int de : request.fields().keySet()) {
             if (NEVER_ECHOED.contains(de)) {
@@ -36,6 +40,9 @@ public final class IsoResponseBuilder {
             echoField(builder, de, request.rawField(de));
         }
         builder.ans(39, responseCode);
+        if (authorizationId != null) {
+            builder.ans(38, authorizationId);
+        }
         return builder.build();
     }
 

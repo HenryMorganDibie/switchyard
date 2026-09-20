@@ -14,6 +14,8 @@ import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnectionResetE
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnector;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerResponse;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerUnavailableException;
+import com.henrymorgandibie.switchyard.reversal.ReversalLinkResult;
+import com.henrymorgandibie.switchyard.reversal.ReversalService;
 import com.henrymorgandibie.switchyard.routing.domain.NoRouteException;
 import com.henrymorgandibie.switchyard.routing.domain.TransactionRouter;
 import com.henrymorgandibie.switchyard.transaction.domain.Transaction;
@@ -94,6 +96,7 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
     private static final String RESPONSE_CODE_OUTCOME_UNKNOWN = "91"; // issuer or switch inoperative
     private static final String RESPONSE_CODE_UNTRUSTED_RESPONSE = "96"; // system malfunction
     private static final String RESPONSE_CODE_DUPLICATE_STILL_PROCESSING = "96"; // system malfunction
+    private static final String RESPONSE_CODE_REVERSAL_ORIGINAL_NOT_FOUND = "25"; // unable to locate record
 
     private static final Duration DUPLICATE_WAIT_BUDGET = Duration.ofMillis(500);
     private static final Duration DUPLICATE_WAIT_POLL_INTERVAL = Duration.ofMillis(20);
@@ -103,17 +106,20 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
     private final TransactionRouter router;
     private final Duration issuerCallTimeout;
     private final IdempotencyService idempotencyService;
+    private final ReversalService reversalService;
 
     public TransactionProcessingPipeline(TransactionRepository transactionRepository,
                                           TransactionEventRepository eventRepository,
                                           TransactionRouter router,
                                           Duration issuerCallTimeout,
-                                          IdempotencyService idempotencyService) {
+                                          IdempotencyService idempotencyService,
+                                          ReversalService reversalService) {
         this.transactionRepository = transactionRepository;
         this.eventRepository = eventRepository;
         this.router = router;
         this.issuerCallTimeout = issuerCallTimeout;
         this.idempotencyService = idempotencyService;
+        this.reversalService = reversalService;
     }
 
     @Override
@@ -132,7 +138,14 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
         String stan = request.stringField(11);
         String processingCode = request.stringField(3);
         long amount = Long.parseLong(request.stringField(4));
-        String rrn = request.hasField(37) ? request.stringField(37) : null;
+        // A REVERSAL_REQUEST's DE37 references the RRN of the transaction it reverses - it is
+        // not this message's own RRN, so it must not be stored as this transaction row's own
+        // rrn column: doing so would make ReversalService.mostRecentByRrn's lookup match the
+        // reversal messages themselves (always more recent than the original they reference),
+        // not just the original transaction it's actually trying to find. handleReversal reads
+        // DE37 directly off the request for that lookup instead.
+        String rrn = (request.mti() != Mti.REVERSAL_REQUEST && request.hasField(37))
+                ? request.stringField(37) : null;
 
         String idempotencyKey = IdempotencyKeys.compute(
                 acquiringInstitutionId, terminalId, stan, request.stringField(7), processingCode, amount);
@@ -166,6 +179,11 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
 
         transaction = transitionAndRecord(transaction, TransactionState.VALIDATING, null);
         transaction = transitionAndRecord(transaction, TransactionState.VALIDATED, null);
+
+        if (request.mti() == Mti.REVERSAL_REQUEST) {
+            return handleReversal(transaction, request, idempotencyKey);
+        }
+
         transaction = transitionAndRecord(transaction, TransactionState.ROUTING, null);
 
         IssuerConnector issuer;
@@ -199,10 +217,43 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
         TransactionState outcome = issuerResponse.approved() ? TransactionState.APPROVED : TransactionState.DECLINED;
         transaction = transitionAndRecord(transaction, outcome, "issuer response code " + issuerResponse.responseCode());
         transaction.recordResponseCode(issuerResponse.responseCode());
-        transactionRepository.saveAndFlush(transaction);
+        transaction = transactionRepository.saveAndFlush(transaction);
+
+        if (outcome == TransactionState.APPROVED) {
+            transaction = reversalService.assignRrnIfAbsent(transaction, request.stringField(7));
+        }
 
         IsoMessage response = IsoResponseBuilder.buildResponse(request, request.mti().responseMti(),
-                issuerResponse.responseCode(), issuerResponse.authorizationId());
+                issuerResponse.responseCode(), issuerResponse.authorizationId(), transaction.rrn());
+        return respond(idempotencyKey, response);
+    }
+
+    /**
+     * A reversal request's own transaction row is resolved directly from VALIDATED to a terminal
+     * outcome (see {@link TransactionStateMachine}'s Javadoc) by matching {@code referencedRrn}
+     * (DE37) against the switch's own transaction records via {@link ReversalService} - there is
+     * no issuer to route to for a fresh authorization decision.
+     */
+    private byte[] handleReversal(Transaction transaction, IsoMessage request, String idempotencyKey) {
+        String referencedRrn = request.stringField(37);
+        ReversalLinkResult result = reversalService.linkToOriginal(referencedRrn, transaction.id(),
+                "customer-initiated reversal");
+
+        String responseCode;
+        TransactionState outcome;
+        if (result instanceof ReversalLinkResult.Linked) {
+            responseCode = "00";
+            outcome = TransactionState.APPROVED;
+        } else {
+            responseCode = RESPONSE_CODE_REVERSAL_ORIGINAL_NOT_FOUND;
+            outcome = TransactionState.DECLINED;
+        }
+
+        transaction = transitionAndRecord(transaction, outcome, "reversal linking result: " + result);
+        transaction.recordResponseCode(responseCode);
+        transactionRepository.saveAndFlush(transaction);
+
+        IsoMessage response = IsoResponseBuilder.buildResponse(request, request.mti().responseMti(), responseCode);
         return respond(idempotencyKey, response);
     }
 

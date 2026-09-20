@@ -10,6 +10,7 @@ import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnectionResetE
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnector;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerResponse;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerUnavailableException;
+import com.henrymorgandibie.switchyard.reversal.ReversalService;
 import com.henrymorgandibie.switchyard.routing.domain.NetworkParticipant;
 import com.henrymorgandibie.switchyard.routing.domain.NoRouteException;
 import com.henrymorgandibie.switchyard.routing.domain.TransactionRouter;
@@ -58,6 +59,9 @@ class TransactionProcessingPipelineTest {
     @Mock
     private IdempotencyService idempotencyService;
 
+    @Mock
+    private ReversalService reversalService;
+
     @Test
     void approvedFlowTransitionsThroughToApprovedAndReturnsA00Response() {
         NetworkParticipant issuerParticipant =
@@ -66,6 +70,8 @@ class TransactionProcessingPipelineTest {
         TransactionRouter router = acquiringInstitutionId -> issuer;
 
         when(transactionRepository.saveAndFlush(any(Transaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(reversalService.assignRrnIfAbsent(any(Transaction.class), any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         TransactionProcessingPipeline pipeline = newPipeline(router);
@@ -321,7 +327,7 @@ class TransactionProcessingPipelineTest {
 
     private TransactionProcessingPipeline newPipeline(TransactionRouter router) {
         return new TransactionProcessingPipeline(
-                transactionRepository, eventRepository, router, ISSUER_TIMEOUT, idempotencyService);
+                transactionRepository, eventRepository, router, ISSUER_TIMEOUT, idempotencyService, reversalService);
     }
 
     private Transaction lastSavedTransaction() {

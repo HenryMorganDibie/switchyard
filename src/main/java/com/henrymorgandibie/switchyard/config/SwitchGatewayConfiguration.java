@@ -7,11 +7,13 @@ import com.henrymorgandibie.switchyard.participant.acquirer.AcquirerConnector;
 import com.henrymorgandibie.switchyard.participant.acquirer.DemoAcquirer;
 import com.henrymorgandibie.switchyard.participant.issuer.DemoIssuer;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnector;
+import com.henrymorgandibie.switchyard.reversal.ReversalService;
 import com.henrymorgandibie.switchyard.routing.application.DefaultTransactionRouter;
 import com.henrymorgandibie.switchyard.routing.domain.NetworkParticipant;
 import com.henrymorgandibie.switchyard.routing.domain.RoutingRule;
 import com.henrymorgandibie.switchyard.routing.domain.TransactionRouter;
 import com.henrymorgandibie.switchyard.transaction.application.TransactionProcessingPipeline;
+import com.henrymorgandibie.switchyard.transaction.repository.ReversalRepository;
 import com.henrymorgandibie.switchyard.transaction.repository.TransactionEventRepository;
 import com.henrymorgandibie.switchyard.transaction.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -82,14 +84,22 @@ public class SwitchGatewayConfiguration {
     }
 
     @Bean
+    public ReversalService reversalService(TransactionRepository transactionRepository,
+                                            ReversalRepository reversalRepository,
+                                            TransactionEventRepository eventRepository) {
+        return new ReversalService(transactionRepository, reversalRepository, eventRepository);
+    }
+
+    @Bean
     public TransactionProcessingPipeline transactionProcessingPipeline(
             TransactionRepository transactionRepository,
             TransactionEventRepository eventRepository,
             TransactionRouter router,
             @Value("${switchyard.issuer.timeout-ms:2000}") long issuerTimeoutMillis,
-            IdempotencyService idempotencyService) {
+            IdempotencyService idempotencyService,
+            ReversalService reversalService) {
         return new TransactionProcessingPipeline(transactionRepository, eventRepository, router,
-                Duration.ofMillis(issuerTimeoutMillis), idempotencyService);
+                Duration.ofMillis(issuerTimeoutMillis), idempotencyService, reversalService);
     }
 
     @Bean(initMethod = "start", destroyMethod = "stop")

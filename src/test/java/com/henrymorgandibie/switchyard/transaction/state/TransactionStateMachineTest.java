@@ -33,6 +33,8 @@ class TransactionStateMachineTest {
             new Pair(VALIDATING, VALIDATED),
             new Pair(VALIDATING, FAILED),
             new Pair(VALIDATED, ROUTING),
+            new Pair(VALIDATED, APPROVED),
+            new Pair(VALIDATED, DECLINED),
             new Pair(ROUTING, SENT_TO_ISSUER),
             new Pair(ROUTING, FAILED),
             new Pair(SENT_TO_ISSUER, APPROVED),
@@ -137,6 +139,17 @@ class TransactionStateMachineTest {
         TransactionStateMachine.transition(transaction, FAILED);
 
         assertThat(transaction.state()).isEqualTo(FAILED);
+    }
+
+    @Test
+    void reversalPathResolvesDirectlyFromValidatedWithoutRouting() {
+        Transaction transaction = sampleTransaction();
+
+        TransactionStateMachine.transition(transaction, VALIDATING);
+        TransactionStateMachine.transition(transaction, VALIDATED);
+        TransactionStateMachine.transition(transaction, APPROVED);
+
+        assertThat(transaction.state()).isEqualTo(APPROVED);
     }
 
     private static Transaction sampleTransaction() {

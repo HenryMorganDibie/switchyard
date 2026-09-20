@@ -58,7 +58,10 @@ public class Transaction {
     @Column(name = "stan", nullable = false, length = 6, updatable = false)
     private String stan;
 
-    @Column(name = "rrn", length = 12, updatable = false)
+    // Not updatable=false: a client-supplied RRN is stored as-is at creation, but an approved
+    // transaction that arrived without one gets a switch-assigned RRN afterward (see
+    // ReversalService/RrnGenerator) so it can be referenced by a later reversal.
+    @Column(name = "rrn", length = 12)
     private String rrn;
 
     @Column(name = "processing_code", length = 6, updatable = false)
@@ -126,6 +129,12 @@ public class Transaction {
 
     public void recordResponseCode(String responseCode) {
         this.responseCode = responseCode;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Assigns a switch-generated RRN to a transaction that didn't already have one. */
+    public void assignRrn(String rrn) {
+        this.rrn = rrn;
         this.updatedAt = Instant.now();
     }
 

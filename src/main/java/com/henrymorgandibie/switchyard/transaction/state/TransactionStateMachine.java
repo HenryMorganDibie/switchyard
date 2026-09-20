@@ -31,6 +31,12 @@ import static com.henrymorgandibie.switchyard.transaction.state.TransactionState
  * the safe assumption is that it might have, so a reversal is attempted defensively rather than
  * simply marking the transaction FAILED and moving on.
  *
+ * <p>{@code VALIDATED -> APPROVED / DECLINED} (skipping ROUTING/SENT_TO_ISSUER) is the path a
+ * reversal request's own transaction row takes: a 0400 is resolved by matching it against the
+ * switch's already-persisted record of the original transaction (see {@code ReversalService}),
+ * not by routing to an issuer for a fresh authorization decision, so there is no routing/issuer
+ * hop to go through.
+ *
  * <p>Stateless and thread-safe: the transition table is built once into an immutable map.
  */
 public final class TransactionStateMachine {
@@ -64,7 +70,7 @@ public final class TransactionStateMachine {
         Map<TransactionState, Set<TransactionState>> transitions = new EnumMap<>(TransactionState.class);
         transitions.put(RECEIVED, EnumSet.of(VALIDATING));
         transitions.put(VALIDATING, EnumSet.of(VALIDATED, FAILED));
-        transitions.put(VALIDATED, EnumSet.of(ROUTING));
+        transitions.put(VALIDATED, EnumSet.of(ROUTING, APPROVED, DECLINED));
         transitions.put(ROUTING, EnumSet.of(SENT_TO_ISSUER, FAILED));
         transitions.put(SENT_TO_ISSUER, EnumSet.of(APPROVED, DECLINED, TIMEOUT, FAILED));
         transitions.put(APPROVED, EnumSet.of(REVERSAL_PENDING));

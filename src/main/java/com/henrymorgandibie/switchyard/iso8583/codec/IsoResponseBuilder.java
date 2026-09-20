@@ -27,11 +27,21 @@ public final class IsoResponseBuilder {
     }
 
     public static IsoMessage buildResponse(IsoMessage request, Mti responseMti, String responseCode) {
-        return buildResponse(request, responseMti, responseCode, null);
+        return buildResponse(request, responseMti, responseCode, null, null);
     }
 
     public static IsoMessage buildResponse(IsoMessage request, Mti responseMti, String responseCode,
                                             String authorizationId) {
+        return buildResponse(request, responseMti, responseCode, authorizationId, null);
+    }
+
+    /**
+     * @param rrn a switch-assigned RRN (DE37) to add to the response, or null. Only applied when
+     *            the request didn't already carry DE37 itself - a client-supplied RRN, already
+     *            echoed by the loop below, always wins over one the switch would have assigned.
+     */
+    public static IsoMessage buildResponse(IsoMessage request, Mti responseMti, String responseCode,
+                                            String authorizationId, String rrn) {
         IsoMessage.Builder builder = IsoMessage.builder(responseMti);
         for (int de : request.fields().keySet()) {
             if (NEVER_ECHOED.contains(de)) {
@@ -42,6 +52,9 @@ public final class IsoResponseBuilder {
         builder.ans(39, responseCode);
         if (authorizationId != null) {
             builder.ans(38, authorizationId);
+        }
+        if (rrn != null && !request.hasField(37)) {
+            builder.ans(37, rrn);
         }
         return builder.build();
     }

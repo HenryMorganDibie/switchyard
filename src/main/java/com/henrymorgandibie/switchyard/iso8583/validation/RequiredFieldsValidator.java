@@ -27,8 +27,8 @@ public final class RequiredFieldsValidator {
             Mti.FINANCIAL_RESPONSE, Set.of(3, 4, 7, 11, 39, 41, 49),
             Mti.REVERSAL_REQUEST, Set.of(3, 4, 7, 11, 32, 37, 41, 49),
             Mti.REVERSAL_RESPONSE, Set.of(3, 4, 7, 11, 37, 39, 41, 49),
-            Mti.NETWORK_MANAGEMENT_REQUEST, Set.of(7, 11),
-            Mti.NETWORK_MANAGEMENT_RESPONSE, Set.of(7, 11, 39)
+            Mti.NETWORK_MANAGEMENT_REQUEST, Set.of(7, 11, 70),
+            Mti.NETWORK_MANAGEMENT_RESPONSE, Set.of(7, 11, 39, 70)
     );
 
     private RequiredFieldsValidator() {

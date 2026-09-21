@@ -1,6 +1,9 @@
 package com.henrymorgandibie.switchyard.config;
 
 import com.henrymorgandibie.switchyard.idempotency.IdempotencyService;
+import com.henrymorgandibie.switchyard.network.management.DispatchingMessageHandler;
+import com.henrymorgandibie.switchyard.network.management.NetworkManagementHandler;
+import com.henrymorgandibie.switchyard.network.tcp.IsoMessageHandler;
 import com.henrymorgandibie.switchyard.network.tcp.IsoTcpServer;
 import com.henrymorgandibie.switchyard.network.tcp.IsoTcpServerConfig;
 import com.henrymorgandibie.switchyard.participant.acquirer.AcquirerConnector;
@@ -10,6 +13,7 @@ import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnector;
 import com.henrymorgandibie.switchyard.reversal.ReversalService;
 import com.henrymorgandibie.switchyard.routing.application.DefaultTransactionRouter;
 import com.henrymorgandibie.switchyard.routing.domain.NetworkParticipant;
+import com.henrymorgandibie.switchyard.routing.domain.NetworkParticipantStatusRegistry;
 import com.henrymorgandibie.switchyard.routing.domain.RoutingRule;
 import com.henrymorgandibie.switchyard.routing.domain.TransactionRouter;
 import com.henrymorgandibie.switchyard.transaction.application.TransactionProcessingPipeline;
@@ -102,10 +106,26 @@ public class SwitchGatewayConfiguration {
                 Duration.ofMillis(issuerTimeoutMillis), idempotencyService, reversalService);
     }
 
+    @Bean
+    public NetworkParticipantStatusRegistry networkParticipantStatusRegistry() {
+        return new NetworkParticipantStatusRegistry();
+    }
+
+    @Bean
+    public NetworkManagementHandler networkManagementHandler(NetworkParticipantStatusRegistry statusRegistry) {
+        return new NetworkManagementHandler(statusRegistry);
+    }
+
+    @Bean
+    public IsoMessageHandler dispatchingMessageHandler(TransactionProcessingPipeline transactionProcessingPipeline,
+                                                         NetworkManagementHandler networkManagementHandler) {
+        return new DispatchingMessageHandler(transactionProcessingPipeline, networkManagementHandler);
+    }
+
     @Bean(initMethod = "start", destroyMethod = "stop")
     @ConditionalOnProperty(prefix = "switchyard.tcp", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public IsoTcpServer isoTcpServer(TransactionProcessingPipeline pipeline,
+    public IsoTcpServer isoTcpServer(IsoMessageHandler dispatchingMessageHandler,
                                       @Value("${switchyard.tcp.port:8583}") int port) {
-        return new IsoTcpServer(IsoTcpServerConfig.defaults(port), pipeline);
+        return new IsoTcpServer(IsoTcpServerConfig.defaults(port), dispatchingMessageHandler);
     }
 }

@@ -58,13 +58,26 @@ class RequiredFieldsValidatorTest {
     }
 
     @Test
-    void networkManagementRequestOnlyNeedsTransmissionTimeAndStan() {
+    void networkManagementRequestWithTransmissionTimeStanAndFunctionCodePasses() {
+        IsoMessage message = IsoMessage.builder(Mti.NETWORK_MANAGEMENT_REQUEST)
+                .numeric(7, "0910120700")
+                .numeric(11, "000004")
+                .numeric(70, "001")
+                .build();
+
+        assertThatCode(() -> RequiredFieldsValidator.validate(message)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void networkManagementRequestMissingFunctionCodeIsRejected() {
         IsoMessage message = IsoMessage.builder(Mti.NETWORK_MANAGEMENT_REQUEST)
                 .numeric(7, "0910120700")
                 .numeric(11, "000004")
                 .build();
 
-        assertThatCode(() -> RequiredFieldsValidator.validate(message)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> RequiredFieldsValidator.validate(message))
+                .isInstanceOf(RequiredFieldMissingException.class)
+                .hasMessageContaining("DE70");
     }
 
     @Test

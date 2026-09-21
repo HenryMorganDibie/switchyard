@@ -224,6 +224,7 @@ class TransactionProcessingPipelineTest {
         byte[] networkManagementRequest = IsoMessagePacker.pack(IsoMessage.builder(Mti.NETWORK_MANAGEMENT_REQUEST)
                 .numeric(7, "0910120700")
                 .numeric(11, "000004")
+                .numeric(70, "001")
                 .build());
 
         assertThatThrownBy(() -> pipeline.handle("corr-4", networkManagementRequest))

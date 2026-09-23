@@ -3,15 +3,20 @@
 Production-oriented ISO 8583 payment switch reference implementation, built with Java 21 and
 Spring Boot 4.
 
-**Status: Milestone A complete.** A real ISO 8583 0200 sent over a real TCP socket is decoded,
+**Status: Milestone B complete.** A real ISO 8583 0200 sent over a real TCP socket is decoded,
 validated, routed, authorized by a simulated issuer, persisted through an explicit transaction
 state machine, and answered with a real 0210 — proven by an unmocked, Testcontainers-backed
-end-to-end test (`GoldenPathIntegrationTest`). Failure-mode simulation, idempotency, reversals,
-Kafka, observability, security, the REST API, and performance benchmarking are not built yet —
-see the checklist below. This README will keep growing as each milestone is actually implemented
-and verified — nothing is documented here until it's been run and tested. See
-`docs/production-hardening.md` (once written) for the full "implemented here" vs. "required for
-real production" split.
+end-to-end test (`GoldenPathIntegrationTest`). On top of that golden path, the switch now also
+simulates realistic downstream failures with deliberate ISO response codes, guarantees idempotency
+under concurrent duplicate/retried requests (Postgres unique constraint as source of truth, Redis
+as a fast-path cache), processes reversals — including switch-assigned RRNs and a real,
+unmocked-Postgres proof that concurrent reversals for the same transaction are resolved correctly
+under genuine optimistic-lock contention — and handles network management (0800/0810) sign-on,
+sign-off, and echo. Kafka, observability, security, the REST API, and performance benchmarking
+are not built yet — see the checklist below. This README will keep growing as each milestone is
+actually implemented and verified — nothing is documented here until it's been run and tested.
+See `docs/production-hardening.md` (once written) for the full "implemented here" vs. "required
+for real production" split.
 
 ## What this project is
 
@@ -27,7 +32,7 @@ PCI-DSS certified and does not implement real card-scheme certification. See `SE
 
 - [x] Milestone A — ISO 8583 codec, TCP gateway, transaction pipeline, golden-path 0200→0210
       over TCP, verified end-to-end
-- [ ] Milestone B — failure simulation, idempotency, reversals, network management
+- [x] Milestone B — failure simulation, idempotency, reversals, network management
 - [ ] Milestone C — Kafka events, observability, security controls
 - [ ] Milestone D — admin/simulation REST API, CLI simulator, performance benchmarks
 - [ ] Milestone E — full documentation, chaos testing, production-readiness review

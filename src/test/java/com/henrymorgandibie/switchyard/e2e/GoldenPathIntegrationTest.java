@@ -48,9 +48,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * from an earlier idempotency-milestone test) answered before Postgres was ever touched. Pointing
  * Redis at an unreachable port makes IdempotencyService's graceful-degradation path - the thing
  * this test is supposed to prove works - actually exercised, deterministically, every run.
- * Kafka is not provisioned either: nothing in this milestone's pipeline uses it (event publishing
- * is a later milestone), and Spring's auto-configuration for it is lazy, so the context starts
- * fine without it running.
+ * Kafka's bootstrap server is pointed at an unreachable address for the same reason: publishing a
+ * transaction event (see {@code TransactionEventPublisher}) is best-effort and must never hang or
+ * fail the payment-critical path when the broker is down - this test is what proves that survives
+ * even when every {@code TransactionEvent} publish attempt genuinely times out (bounded by
+ * {@code spring.kafka.producer.properties.max.block.ms}, comfortably inside this test's own
+ * 30-second timeout). A real, unmocked-broker proof that publishing succeeds when Kafka
+ * <em>is</em> up is {@code KafkaEventPublishingIntegrationTest}, not this one.
  */
 @SpringBootTest
 @Testcontainers
@@ -58,7 +62,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         "switchyard.tcp.enabled=true",
         "switchyard.tcp.port=0",
         "spring.data.redis.host=127.0.0.1",
-        "spring.data.redis.port=1" // deliberately unreachable - see class Javadoc
+        "spring.data.redis.port=1", // deliberately unreachable - see class Javadoc
+        "spring.kafka.bootstrap-servers=127.0.0.1:1" // deliberately unreachable - see class Javadoc
 })
 class GoldenPathIntegrationTest {
 

@@ -6,8 +6,10 @@ import com.henrymorgandibie.switchyard.iso8583.codec.IsoResponseBuilder;
 import com.henrymorgandibie.switchyard.iso8583.message.IsoMessage;
 import com.henrymorgandibie.switchyard.iso8583.validation.MtiValidator;
 import com.henrymorgandibie.switchyard.iso8583.validation.RequiredFieldsValidator;
+import com.henrymorgandibie.switchyard.messaging.kafka.NetworkEventPublisher;
 import com.henrymorgandibie.switchyard.network.tcp.IsoMessageHandler;
 import com.henrymorgandibie.switchyard.routing.domain.NetworkParticipantStatusRegistry;
+import com.henrymorgandibie.switchyard.routing.domain.ParticipantStatus;
 
 import java.util.function.Consumer;
 
@@ -17,7 +19,9 @@ import java.util.function.Consumer;
  * transaction. Deliberately does not touch the {@code transactions} table or its audit trail at
  * all: a sign-on isn't a transaction in the sense the rest of this project models one (see
  * {@code TransactionProcessingPipeline}'s Javadoc, which explicitly scopes 0800/0810 out), it's
- * network-layer state that {@link NetworkParticipantStatusRegistry} tracks instead.
+ * network-layer state that {@link NetworkParticipantStatusRegistry} tracks instead. A successful
+ * sign-on/sign-off is also published to Kafka via {@link NetworkEventPublisher} - see its
+ * Javadoc for the delivery tradeoff. Echo never publishes: it doesn't change any status.
  *
  * <p>DE70 (Network Management Information Code) selects the function, using switchyard's own
  * project-defined convention (see {@code docs/iso8583.md}) rather than any one real network's
@@ -49,9 +53,12 @@ public final class NetworkManagementHandler implements IsoMessageHandler {
     private static final String RESPONSE_CODE_INVALID_TRANSACTION = "12";
 
     private final NetworkParticipantStatusRegistry statusRegistry;
+    private final NetworkEventPublisher networkEventPublisher;
 
-    public NetworkManagementHandler(NetworkParticipantStatusRegistry statusRegistry) {
+    public NetworkManagementHandler(NetworkParticipantStatusRegistry statusRegistry,
+                                     NetworkEventPublisher networkEventPublisher) {
         this.statusRegistry = statusRegistry;
+        this.networkEventPublisher = networkEventPublisher;
     }
 
     @Override
@@ -64,8 +71,14 @@ public final class NetworkManagementHandler implements IsoMessageHandler {
         String institutionId = request.hasField(32) ? request.stringField(32) : null;
 
         String responseCode = switch (functionCode) {
-            case FUNCTION_SIGN_ON -> applyIfInstitutionKnown(institutionId, statusRegistry::markUp);
-            case FUNCTION_SIGN_OFF -> applyIfInstitutionKnown(institutionId, statusRegistry::markDown);
+            case FUNCTION_SIGN_ON -> applyIfInstitutionKnown(institutionId, id -> {
+                statusRegistry.markUp(id);
+                networkEventPublisher.publish(id, ParticipantStatus.UP.name());
+            });
+            case FUNCTION_SIGN_OFF -> applyIfInstitutionKnown(institutionId, id -> {
+                statusRegistry.markDown(id);
+                networkEventPublisher.publish(id, ParticipantStatus.DOWN.name());
+            });
             case FUNCTION_ECHO_TEST -> RESPONSE_CODE_APPROVED;
             default -> RESPONSE_CODE_INVALID_TRANSACTION;
         };

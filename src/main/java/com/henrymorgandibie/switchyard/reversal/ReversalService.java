@@ -1,5 +1,6 @@
 package com.henrymorgandibie.switchyard.reversal;
 
+import com.henrymorgandibie.switchyard.messaging.kafka.TransactionEventPublisher;
 import com.henrymorgandibie.switchyard.transaction.domain.Reversal;
 import com.henrymorgandibie.switchyard.transaction.domain.Transaction;
 import com.henrymorgandibie.switchyard.transaction.domain.TransactionEvent;
@@ -33,12 +34,15 @@ public final class ReversalService {
     private final TransactionRepository transactionRepository;
     private final ReversalRepository reversalRepository;
     private final TransactionEventRepository eventRepository;
+    private final TransactionEventPublisher transactionEventPublisher;
 
     public ReversalService(TransactionRepository transactionRepository, ReversalRepository reversalRepository,
-                            TransactionEventRepository eventRepository) {
+                            TransactionEventRepository eventRepository,
+                            TransactionEventPublisher transactionEventPublisher) {
         this.transactionRepository = transactionRepository;
         this.reversalRepository = reversalRepository;
         this.eventRepository = eventRepository;
+        this.transactionEventPublisher = transactionEventPublisher;
     }
 
     /**
@@ -105,8 +109,10 @@ public final class ReversalService {
             try {
                 TransactionStateMachine.transition(original, target);
                 Transaction saved = transactionRepository.saveAndFlush(original);
-                eventRepository.saveAndFlush(TransactionEvent.of(saved.id(), from, target,
-                        "reversal linked to original transaction"));
+                TransactionEvent event = TransactionEvent.of(saved.id(), from, target,
+                        "reversal linked to original transaction");
+                eventRepository.saveAndFlush(event);
+                transactionEventPublisher.publish(event);
                 return saved;
             } catch (ObjectOptimisticLockingFailureException raced) {
                 UUID originalId = original.id();

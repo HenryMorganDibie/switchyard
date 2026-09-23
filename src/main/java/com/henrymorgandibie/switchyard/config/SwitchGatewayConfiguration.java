@@ -1,6 +1,8 @@
 package com.henrymorgandibie.switchyard.config;
 
 import com.henrymorgandibie.switchyard.idempotency.IdempotencyService;
+import com.henrymorgandibie.switchyard.messaging.kafka.NetworkEventPublisher;
+import com.henrymorgandibie.switchyard.messaging.kafka.TransactionEventPublisher;
 import com.henrymorgandibie.switchyard.network.management.DispatchingMessageHandler;
 import com.henrymorgandibie.switchyard.network.management.NetworkManagementHandler;
 import com.henrymorgandibie.switchyard.network.tcp.IsoMessageHandler;
@@ -90,8 +92,10 @@ public class SwitchGatewayConfiguration {
     @Bean
     public ReversalService reversalService(TransactionRepository transactionRepository,
                                             ReversalRepository reversalRepository,
-                                            TransactionEventRepository eventRepository) {
-        return new ReversalService(transactionRepository, reversalRepository, eventRepository);
+                                            TransactionEventRepository eventRepository,
+                                            TransactionEventPublisher transactionEventPublisher) {
+        return new ReversalService(transactionRepository, reversalRepository, eventRepository,
+                transactionEventPublisher);
     }
 
     @Bean
@@ -101,9 +105,10 @@ public class SwitchGatewayConfiguration {
             TransactionRouter router,
             @Value("${switchyard.issuer.timeout-ms:2000}") long issuerTimeoutMillis,
             IdempotencyService idempotencyService,
-            ReversalService reversalService) {
+            ReversalService reversalService,
+            TransactionEventPublisher transactionEventPublisher) {
         return new TransactionProcessingPipeline(transactionRepository, eventRepository, router,
-                Duration.ofMillis(issuerTimeoutMillis), idempotencyService, reversalService);
+                Duration.ofMillis(issuerTimeoutMillis), idempotencyService, reversalService, transactionEventPublisher);
     }
 
     @Bean
@@ -112,8 +117,9 @@ public class SwitchGatewayConfiguration {
     }
 
     @Bean
-    public NetworkManagementHandler networkManagementHandler(NetworkParticipantStatusRegistry statusRegistry) {
-        return new NetworkManagementHandler(statusRegistry);
+    public NetworkManagementHandler networkManagementHandler(NetworkParticipantStatusRegistry statusRegistry,
+                                                               NetworkEventPublisher networkEventPublisher) {
+        return new NetworkManagementHandler(statusRegistry, networkEventPublisher);
     }
 
     @Bean

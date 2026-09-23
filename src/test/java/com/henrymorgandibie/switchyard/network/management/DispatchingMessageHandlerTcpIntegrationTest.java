@@ -4,6 +4,7 @@ import com.henrymorgandibie.switchyard.iso8583.codec.IsoMessagePacker;
 import com.henrymorgandibie.switchyard.iso8583.codec.IsoMessageUnpacker;
 import com.henrymorgandibie.switchyard.iso8583.message.IsoMessage;
 import com.henrymorgandibie.switchyard.iso8583.message.Mti;
+import com.henrymorgandibie.switchyard.messaging.kafka.NetworkEventPublisher;
 import com.henrymorgandibie.switchyard.network.tcp.IsoMessageHandler;
 import com.henrymorgandibie.switchyard.network.tcp.IsoTcpServer;
 import com.henrymorgandibie.switchyard.network.tcp.IsoTcpServerConfig;
@@ -21,6 +22,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Proves {@link DispatchingMessageHandler} and {@link NetworkManagementHandler} together over a
@@ -93,7 +95,10 @@ class DispatchingMessageHandlerTcpIntegrationTest {
     }
 
     private IsoTcpServer startServer(NetworkParticipantStatusRegistry statusRegistry, IsoMessageHandler transactionHandler) {
-        NetworkManagementHandler networkManagementHandler = new NetworkManagementHandler(statusRegistry);
+        // A mock is fine here - this test proves the dispatcher/handler wiring and status
+        // registry, not Kafka publishing, which has its own dedicated real-broker test.
+        NetworkManagementHandler networkManagementHandler =
+                new NetworkManagementHandler(statusRegistry, mock(NetworkEventPublisher.class));
         DispatchingMessageHandler dispatcher = new DispatchingMessageHandler(transactionHandler, networkManagementHandler);
         IsoTcpServer newServer = new IsoTcpServer(IsoTcpServerConfig.defaults(0), dispatcher);
         newServer.start();

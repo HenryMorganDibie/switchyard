@@ -1,5 +1,6 @@
 package com.henrymorgandibie.switchyard.reversal;
 
+import com.henrymorgandibie.switchyard.messaging.kafka.TransactionEventPublisher;
 import com.henrymorgandibie.switchyard.transaction.domain.Reversal;
 import com.henrymorgandibie.switchyard.transaction.domain.Transaction;
 import com.henrymorgandibie.switchyard.transaction.domain.TransactionEvent;
@@ -49,8 +50,11 @@ class ReversalServiceTest {
     @Mock
     private TransactionEventRepository eventRepository;
 
+    @Mock
+    private TransactionEventPublisher transactionEventPublisher;
+
     private ReversalService service() {
-        return new ReversalService(transactionRepository, reversalRepository, eventRepository);
+        return new ReversalService(transactionRepository, reversalRepository, eventRepository, transactionEventPublisher);
     }
 
     @Test

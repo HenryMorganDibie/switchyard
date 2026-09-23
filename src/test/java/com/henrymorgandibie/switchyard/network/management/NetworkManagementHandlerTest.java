@@ -5,21 +5,34 @@ import com.henrymorgandibie.switchyard.iso8583.codec.IsoMessageUnpacker;
 import com.henrymorgandibie.switchyard.iso8583.exception.RequiredFieldMissingException;
 import com.henrymorgandibie.switchyard.iso8583.message.IsoMessage;
 import com.henrymorgandibie.switchyard.iso8583.message.Mti;
+import com.henrymorgandibie.switchyard.messaging.kafka.NetworkEventPublisher;
 import com.henrymorgandibie.switchyard.routing.domain.NetworkParticipantStatusRegistry;
 import com.henrymorgandibie.switchyard.routing.domain.ParticipantStatus;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * {@code networkEventPublisher} is a Mockito mock here, not exercised for its own behavior - a
+ * dedicated real-broker test proves publishing itself; this class's job is the handler's own
+ * sign-on/sign-off/echo decision logic.
+ */
+@ExtendWith(MockitoExtension.class)
 class NetworkManagementHandlerTest {
 
     private static final String INSTITUTION_ID = "12345";
 
+    @Mock
+    private NetworkEventPublisher networkEventPublisher;
+
     @Test
     void signOnWithAnInstitutionIdMarksThatInstitutionUpAndApproves() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-1", networkManagementRequest("000001", "001", INSTITUTION_ID));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -33,7 +46,7 @@ class NetworkManagementHandlerTest {
     void signOffWithAnInstitutionIdMarksThatInstitutionDownAndApproves() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
         registry.markUp(INSTITUTION_ID);
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-2", networkManagementRequest("000002", "002", INSTITUTION_ID));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -45,7 +58,7 @@ class NetworkManagementHandlerTest {
     @Test
     void signOnWithoutAnInstitutionIdIsRejectedAsAFormatError() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-3", networkManagementRequest("000003", "001", null));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -56,7 +69,7 @@ class NetworkManagementHandlerTest {
     @Test
     void signOffWithoutAnInstitutionIdIsRejectedAsAFormatError() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-4", networkManagementRequest("000004", "002", null));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -67,7 +80,7 @@ class NetworkManagementHandlerTest {
     @Test
     void echoTestApprovesWithoutTouchingAnyInstitutionsStatus() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-5", networkManagementRequest("000005", "301", null));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -79,7 +92,7 @@ class NetworkManagementHandlerTest {
     @Test
     void echoTestIgnoresAnInstitutionIdIfOnePassed() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-6", networkManagementRequest("000006", "301", INSTITUTION_ID));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -93,7 +106,7 @@ class NetworkManagementHandlerTest {
     @Test
     void unrecognizedFunctionCodeIsDeclinedAsInvalidTransaction() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-7", networkManagementRequest("000007", "999", null));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -104,7 +117,7 @@ class NetworkManagementHandlerTest {
     @Test
     void responseEchoesTheFunctionCodeAndStan() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] response = handler.handle("corr-8", networkManagementRequest("000008", "301", null));
         IsoMessage unpacked = IsoMessageUnpacker.unpack(response);
@@ -116,7 +129,7 @@ class NetworkManagementHandlerTest {
     @Test
     void missingFunctionCodeFailsValidationBeforeAnyStatusChange() {
         NetworkParticipantStatusRegistry registry = new NetworkParticipantStatusRegistry();
-        NetworkManagementHandler handler = new NetworkManagementHandler(registry);
+        NetworkManagementHandler handler = new NetworkManagementHandler(registry, networkEventPublisher);
 
         byte[] malformed = IsoMessagePacker.pack(IsoMessage.builder(Mti.NETWORK_MANAGEMENT_REQUEST)
                 .numeric(7, "0910120700")

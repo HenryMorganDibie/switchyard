@@ -22,6 +22,16 @@ spring:
       timeout: 500ms
   kafka:
     bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        # Publishing a transaction event must never hang the payment-critical path waiting on a
+        # down/unreachable Kafka - bounds the producer's metadata-fetch block (which happens
+        # synchronously on the calling thread) to a few seconds instead of the client's 60s
+        # default. See TransactionEventPublisher's Javadoc for the full best-effort-delivery
+        # tradeoff this is part of.
+        max.block.ms: 3000
 
 switchyard:
   tcp:

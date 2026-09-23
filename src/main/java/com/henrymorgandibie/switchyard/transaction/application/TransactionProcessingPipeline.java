@@ -9,6 +9,7 @@ import com.henrymorgandibie.switchyard.iso8583.message.IsoMessage;
 import com.henrymorgandibie.switchyard.iso8583.message.Mti;
 import com.henrymorgandibie.switchyard.iso8583.validation.MtiValidator;
 import com.henrymorgandibie.switchyard.iso8583.validation.RequiredFieldsValidator;
+import com.henrymorgandibie.switchyard.messaging.kafka.TransactionEventPublisher;
 import com.henrymorgandibie.switchyard.network.tcp.IsoMessageHandler;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnectionResetException;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnector;
@@ -43,9 +44,11 @@ import java.util.concurrent.TimeoutException;
  * persist -&gt; route -&gt; authorize -&gt; respond. Implements {@link IsoMessageHandler} directly, so
  * it plugs straight into the TCP gateway built in an earlier milestone.
  *
- * <p>Deliberately out of scope here: Kafka event publishing and metrics/observability - each is
- * a later milestone. Network management (0800/0810) is also out of scope: it doesn't route to
- * an issuer at all, and gets its own handling when that milestone builds it.
+ * <p>Every {@code TransactionEvent} this pipeline records is also published to Kafka via
+ * {@link TransactionEventPublisher} - see its Javadoc for the best-effort delivery tradeoff.
+ * Metrics/observability is still a later milestone. Network management (0800/0810) is also out
+ * of scope here: it doesn't route to an issuer at all, and gets its own handling
+ * ({@code NetworkManagementHandler}) built in an earlier milestone.
  *
  * <p>No {@code @Transactional} wraps the whole method deliberately: each persistence step
  * commits independently, so a transaction's audit trail (its {@code TransactionEvent} rows)
@@ -107,19 +110,22 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
     private final Duration issuerCallTimeout;
     private final IdempotencyService idempotencyService;
     private final ReversalService reversalService;
+    private final TransactionEventPublisher transactionEventPublisher;
 
     public TransactionProcessingPipeline(TransactionRepository transactionRepository,
                                           TransactionEventRepository eventRepository,
                                           TransactionRouter router,
                                           Duration issuerCallTimeout,
                                           IdempotencyService idempotencyService,
-                                          ReversalService reversalService) {
+                                          ReversalService reversalService,
+                                          TransactionEventPublisher transactionEventPublisher) {
         this.transactionRepository = transactionRepository;
         this.eventRepository = eventRepository;
         this.router = router;
         this.issuerCallTimeout = issuerCallTimeout;
         this.idempotencyService = idempotencyService;
         this.reversalService = reversalService;
+        this.transactionEventPublisher = transactionEventPublisher;
     }
 
     @Override
@@ -379,6 +385,8 @@ public final class TransactionProcessingPipeline implements IsoMessageHandler {
     }
 
     private void recordEvent(Transaction transaction, TransactionState from, TransactionState to, String detail) {
-        eventRepository.saveAndFlush(TransactionEvent.of(transaction.id(), from, to, detail));
+        TransactionEvent event = TransactionEvent.of(transaction.id(), from, to, detail);
+        eventRepository.saveAndFlush(event);
+        transactionEventPublisher.publish(event);
     }
 }

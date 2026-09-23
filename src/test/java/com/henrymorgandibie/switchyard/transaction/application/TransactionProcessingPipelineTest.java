@@ -6,6 +6,7 @@ import com.henrymorgandibie.switchyard.iso8583.codec.IsoMessageUnpacker;
 import com.henrymorgandibie.switchyard.iso8583.exception.RequiredFieldMissingException;
 import com.henrymorgandibie.switchyard.iso8583.message.IsoMessage;
 import com.henrymorgandibie.switchyard.iso8583.message.Mti;
+import com.henrymorgandibie.switchyard.messaging.kafka.TransactionEventPublisher;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnectionResetException;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerConnector;
 import com.henrymorgandibie.switchyard.participant.issuer.IssuerResponse;
@@ -61,6 +62,9 @@ class TransactionProcessingPipelineTest {
 
     @Mock
     private ReversalService reversalService;
+
+    @Mock
+    private TransactionEventPublisher transactionEventPublisher;
 
     @Test
     void approvedFlowTransitionsThroughToApprovedAndReturnsA00Response() {
@@ -327,8 +331,8 @@ class TransactionProcessingPipelineTest {
     }
 
     private TransactionProcessingPipeline newPipeline(TransactionRouter router) {
-        return new TransactionProcessingPipeline(
-                transactionRepository, eventRepository, router, ISSUER_TIMEOUT, idempotencyService, reversalService);
+        return new TransactionProcessingPipeline(transactionRepository, eventRepository, router, ISSUER_TIMEOUT,
+                idempotencyService, reversalService, transactionEventPublisher);
     }
 
     private Transaction lastSavedTransaction() {
